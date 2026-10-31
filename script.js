@@ -1,118 +1,160 @@
-const input = document.getElementById("wordInput");
-const count = document.getElementById("charCount");
-const form = document.getElementById("reverseForm");
+const input  = document.getElementById("word");
+const count  = document.getElementById("count");
+const form   = document.getElementById("form");
 const output = document.getElementById("output");
-const stackArea = document.getElementById("stackArea");
-const heading = document.getElementById("visualHeading");
-const clearButton = document.getElementById("clearButton");
+const stackEl = document.getElementById("stack");
+const opEl   = document.getElementById("op");
+const msg    = document.getElementById("msg");
+const clearBtn = document.getElementById("clear");
 
-let wasmInstance = null;
-let wasmMemory = null;
+const MAX_BYTES = 255;        // the C stack holds 256 bytes (255 + terminator)
+const IN_PTR = 1024;          // input string lives here in wasm memory
+const OUT_PTR = 2048;         // output string lives here
 
-async function loadCProgram() {
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+let wasm = null;
+let timer = null;
+
+function setMsg(text, isError) {
+  msg.textContent = text;
+  msg.className = isError ? "error" : "";
+}
+
+async function loadWasm() {
   try {
-    const response = await fetch("./stack.wasm");
-    if (!response.ok) {
-      throw new Error("stack.wasm could not be found. Check that it is uploaded to the repository root.");
+    const res = await fetch("stack.wasm");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const { instance } = await WebAssembly.instantiate(await res.arrayBuffer());
+    if (!instance.exports.memory || !instance.exports.reverse_word) {
+      throw new Error("missing exports");
     }
-
-    const bytes = await response.arrayBuffer();
-    const result = await WebAssembly.instantiate(bytes);
-
-    // Keep both the exported C function AND the WebAssembly memory.
-    wasmInstance = result.instance;
-    wasmMemory = wasmInstance.exports.memory;
-
-    if (!wasmMemory || !wasmInstance.exports.reverse_word) {
-      throw new Error("The WebAssembly file does not contain the expected exports.");
-    }
-
-    output.textContent = "Ready! Enter a word above.";
-  } catch (error) {
-    output.textContent = "The C module could not load. Check that stack.wasm is uploaded.";
-    console.error("WebAssembly loading error:", error);
+    wasm = instance.exports;
+  } catch (err) {
+    console.error("WebAssembly load error:", err);
+    setMsg("Could not load stack.wasm. Keep it next to index.html and open the page through a web server (GitHub Pages, or a local server), not by double-clicking the file.", true);
   }
 }
 
-function drawStack(word) {
-  stackArea.innerHTML = "";
+// The C code reverses raw bytes, which flips the bytes inside multi-byte
+// UTF-8 characters (é, emoji, ...). Put each such character's bytes back in order.
+function fixUtf8(bytes) {
+  const out = new Uint8Array(bytes.length);
+  let i = 0;
+  while (i < bytes.length) {
+    let j = i;
+    while (j < bytes.length && (bytes[j] & 0xC0) === 0x80) j++;   // continuation bytes
+    if (j < bytes.length && bytes[j] >= 0xC0) j++;                 // lead byte
+    if (j === i) {                                                 // plain ASCII
+      out[i] = bytes[i];
+      i++;
+      continue;
+    }
+    for (let k = 0; k < j - i; k++) out[i + k] = bytes[j - 1 - k];
+    i = j;
+  }
+  return out;
+}
 
-  if (!word.length) {
-    stackArea.innerHTML = '<p class="empty-state">Enter a word and press “Reverse word” to see PUSH and POP.</p>';
-    heading.textContent = "Waiting for input";
+function reverseWithWasm(word) {
+  const bytes = encoder.encode(word);
+  const mem = new Uint8Array(wasm.memory.buffer);
+  mem.fill(0, IN_PTR, IN_PTR + MAX_BYTES + 1);
+  mem.fill(0, OUT_PTR, OUT_PTR + MAX_BYTES + 1);
+  mem.set(bytes, IN_PTR);
+  wasm.reverse_word(IN_PTR, OUT_PTR);
+  return decoder.decode(fixUtf8(mem.slice(OUT_PTR, OUT_PTR + bytes.length)));
+}
+
+function show(ch) { return ch === " " ? "\u2423" : ch; }
+
+function makeCell(ch) {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  cell.textContent = show(ch);
+  return cell;
+}
+
+function markTop() {
+  const old = stackEl.querySelector(".top");
+  if (old) old.classList.remove("top");
+  if (stackEl.lastElementChild) stackEl.lastElementChild.classList.add("top");
+}
+
+function animate(word, reversed) {
+  clearTimeout(timer);
+  stackEl.innerHTML = "";
+  opEl.innerHTML = "&nbsp;";
+
+  const chars = [...word];
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) {
+    output.textContent = reversed;
+    opEl.textContent = "done";
     return;
   }
 
-  heading.textContent = `PUSH ${word.length} characters, then POP`;
+  const delay = Math.max(15, Math.min(250, 3000 / (chars.length * 2)));
+  const popped = [];
+  let step = 0;
+  output.textContent = "";
 
-  [...word].forEach((character, index) => {
-    const cell = document.createElement("div");
-    cell.className = "cell" + (index === word.length - 1 ? " top" : "");
-    cell.style.animationDelay = `${index * 35}ms`;
-
-    const label = document.createElement("small");
-    label.textContent = index === word.length - 1 ? "TOP" : String(index + 1);
-    cell.appendChild(label);
-    cell.appendChild(document.createTextNode(character));
-    stackArea.appendChild(cell);
-  });
+  function tick() {
+    if (step < chars.length) {
+      const ch = chars[step];
+      stackEl.appendChild(makeCell(ch));
+      markTop();
+      opEl.textContent = "push " + show(ch);
+    } else if (step < chars.length * 2) {
+      const ch = [...chars].reverse()[step - chars.length];
+      stackEl.lastElementChild.remove();
+      markTop();
+      popped.push(ch);
+      output.textContent = popped.join("");
+      opEl.textContent = "pop " + show(ch);
+    } else {
+      output.textContent = reversed;   // final value comes from the C function
+      opEl.textContent = "done";
+      return;
+    }
+    step++;
+    timer = setTimeout(tick, delay);
+  }
+  tick();
 }
 
 input.addEventListener("input", () => {
-  count.textContent = `${input.value.length} / 255`;
+  const n = encoder.encode(input.value).length;
+  count.textContent = n + " / " + MAX_BYTES + " bytes";
+  count.className = n > MAX_BYTES ? "over" : "";
 });
 
-form.addEventListener("submit", (event) => {
-  event.preventDefault();
-
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
   const word = input.value;
-  if (!word.length) {
-    output.textContent = "Please enter a word first.";
-    input.focus();
+
+  if (!word) { setMsg("Enter a word first.", true); input.focus(); return; }
+  if (encoder.encode(word).length > MAX_BYTES) {
+    setMsg("Too long. The limit is " + MAX_BYTES + " bytes.", true);
     return;
   }
+  if (!wasm) { setMsg("The C module isn't loaded. Reload the page and try again.", true); return; }
 
-  if (!wasmInstance || !wasmMemory) {
-    output.textContent = "C module is still loading or failed to load. Refresh the page and try again.";
-    return;
-  }
-
-  // Reserve two separate areas in WebAssembly memory:
-  // 1024 onwards = input string; 2048 onwards = output string.
-  const memory = new Uint8Array(wasmMemory.buffer);
-  const inputPointer = 1024;
-  const outputPointer = 2048;
-
-  const encoded = new TextEncoder().encode(word);
-  if (encoded.length > 255) {
-    output.textContent = "Please enter a word with no more than 255 bytes.";
-    return;
-  }
-
-  memory.fill(0, inputPointer, inputPointer + 256);
-  memory.fill(0, outputPointer, outputPointer + 256);
-  memory.set(encoded, inputPointer);
-
-  // Call the C function compiled to WebAssembly.
-  wasmInstance.exports.reverse_word(inputPointer, outputPointer);
-
-  let end = outputPointer;
-  while (memory[end] !== 0 && end < outputPointer + 256) {
-    end++;
-  }
-
-  const reversed = new TextDecoder().decode(memory.slice(outputPointer, end));
-  output.textContent = reversed;
-  drawStack(word);
+  setMsg("");
+  animate(word, reverseWithWasm(word));
 });
 
-clearButton.addEventListener("click", () => {
+clearBtn.addEventListener("click", () => {
+  clearTimeout(timer);
   input.value = "";
-  count.textContent = "0 / 255";
-  output.textContent = "Your result will appear here";
-  drawStack("");
+  count.textContent = "0 / " + MAX_BYTES + " bytes";
+  count.className = "";
+  output.textContent = "-";
+  stackEl.innerHTML = "";
+  opEl.innerHTML = "&nbsp;";
+  setMsg("");
   input.focus();
 });
 
-drawStack("");
-loadCProgram();
+loadWasm();

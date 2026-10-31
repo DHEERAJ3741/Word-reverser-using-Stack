@@ -7,73 +7,40 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="page">
-    <header class="hero">
-      <div class="eyebrow"><span class="pulse"></span> DATA STRUCTURES & ALGORITHMS</div>
-      <h1>Stack <span>Word Reverser</span></h1>
-      <p>See how a stack turns a word backwards, one character at a time.</p>
-    </header>
+  <main>
+    <h1>Stack word reverser</h1>
+    <p class="sub">Each character is pushed onto a stack, then popped off in reverse order. The stack code is written in C and runs as WebAssembly.</p>
 
-    <section class="workspace">
-      <div class="section-heading">
-        <div>
-          <p class="label">TRY IT YOURSELF</p>
-          <h2>Enter a word</h2>
-        </div>
-        <span class="badge">C · WebAssembly</span>
-      </div>
-
-      <form id="reverseForm">
-        <label class="sr-only" for="wordInput">Word to reverse</label>
-        <div class="input-wrap">
-          <input id="wordInput" type="text" maxlength="255" placeholder="e.g. HELLO" autocomplete="off" spellcheck="false">
-          <span id="charCount">0 / 255</span>
-        </div>
-        <div class="actions">
-          <button class="primary" type="submit">Reverse word <span>↗</span></button>
-          <button class="secondary" type="button" id="clearButton">Clear</button>
-        </div>
-      </form>
-
-      <div class="result" id="resultPanel" aria-live="polite">
-        <div>
-          <p class="label">REVERSED OUTPUT</p>
-          <div id="output" class="output">Your result will appear here</div>
-        </div>
-        <div class="result-mark">↶</div>
-      </div>
-
-      <div class="visual">
-        <div class="visual-title">
-          <div>
-            <p class="label">STACK VISUALIZATION</p>
-            <h3 id="visualHeading">Waiting for input</h3>
-          </div>
-          <span class="lifo">LIFO</span>
-        </div>
-        <div class="stack-area" id="stackArea">
-          <p class="empty-state">Enter a word and press “Reverse word” to see PUSH and POP.</p>
-        </div>
-        <div class="legend">
-          <span><i class="push-dot"></i> PUSH — add to top</span>
-          <span><i class="pop-dot"></i> POP — remove from top</span>
+    <form id="form">
+      <label for="word">Word</label>
+      <input id="word" type="text" autocomplete="off" spellcheck="false" placeholder="hello" autofocus>
+      <div class="row">
+        <span id="count">0 / 255 bytes</span>
+        <div class="buttons">
+          <button type="submit" class="primary">Reverse</button>
+          <button type="button" id="clear">Clear</button>
         </div>
       </div>
+    </form>
+
+    <p id="msg" role="status"></p>
+
+    <section>
+      <h2>Result</h2>
+      <div id="output" class="output">-</div>
     </section>
 
-    <section class="how">
-      <div>
-        <p class="label">THE DSA CONCEPT</p>
-        <h2>Last In, First Out.</h2>
-        <p>A stack follows the LIFO principle. The last character pushed onto the stack is the first character popped out.</p>
-      </div>
-      <div class="steps">
-        <div class="step"><b>01</b><div><strong>PUSH</strong><p>Each character is added to the top of the stack.</p></div></div>
-        <div class="step"><b>02</b><div><strong>POP</strong><p>Characters are removed from the top, reversing their order.</p></div></div>
-        <div class="step"><b>03</b><div><strong>RESULT</strong><p>The popped characters form the reversed word.</p></div></div>
-      </div>
+    <section>
+      <h2>Stack</h2>
+      <div id="stack" class="stack"></div>
+      <p id="op" class="op">&nbsp;</p>
+      <p class="hint">left = bottom, right = top</p>
     </section>
-    <footer>Built with C + WebAssembly <span>•</span> Stack implementation using an array</footer>
+
+    <section class="note">
+      <h2>How it works</h2>
+      <p>A stack is last in, first out. Push every character, then pop until it is empty: the last character pushed is the first one out, so the word comes out reversed.</p>
+    </section>
   </main>
   <script src="script.js"></script>
 </body>
