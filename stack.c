@@ -1,6 +1,6 @@
 __attribute__((export_name("reverse_word")))
 void reverse_word(const char *input, char *output) {
-    char stack[256];
+    char stack[100];
     int top = -1;
     int i = 0;
  
