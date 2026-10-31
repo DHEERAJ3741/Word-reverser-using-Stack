@@ -19,7 +19,6 @@ async function loadCProgram() {
     const bytes = await response.arrayBuffer();
     const result = await WebAssembly.instantiate(bytes);
 
-    // Keep both the exported C function AND the WebAssembly memory.
     wasmInstance = result.instance;
     wasmMemory = wasmInstance.exports.memory;
 
@@ -77,8 +76,6 @@ form.addEventListener("submit", (event) => {
     return;
   }
 
-  // Reserve two separate areas in WebAssembly memory:
-  // 1024 onwards = input string; 2048 onwards = output string.
   const memory = new Uint8Array(wasmMemory.buffer);
   const inputPointer = 1024;
   const outputPointer = 2048;
@@ -93,7 +90,6 @@ form.addEventListener("submit", (event) => {
   memory.fill(0, outputPointer, outputPointer + 256);
   memory.set(encoded, inputPointer);
 
-  // Call the C function compiled to WebAssembly.
   wasmInstance.exports.reverse_word(inputPointer, outputPointer);
 
   let end = outputPointer;
