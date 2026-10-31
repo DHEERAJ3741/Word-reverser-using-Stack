@@ -7,9 +7,9 @@ const opEl   = document.getElementById("op");
 const msg    = document.getElementById("msg");
 const clearBtn = document.getElementById("clear");
 
-const MAX_BYTES = 255;        // the C stack holds 256 bytes (255 + terminator)
-const IN_PTR = 1024;          // input string lives here in wasm memory
-const OUT_PTR = 2048;         // output string lives here
+const MAX_BYTES = 255;       
+const IN_PTR = 1024;          
+const OUT_PTR = 2048;         
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -37,16 +37,15 @@ async function loadWasm() {
   }
 }
 
-// The C code reverses raw bytes, which flips the bytes inside multi-byte
-// UTF-8 characters (é, emoji, ...). Put each such character's bytes back in order.
+
 function fixUtf8(bytes) {
   const out = new Uint8Array(bytes.length);
   let i = 0;
   while (i < bytes.length) {
     let j = i;
-    while (j < bytes.length && (bytes[j] & 0xC0) === 0x80) j++;   // continuation bytes
-    if (j < bytes.length && bytes[j] >= 0xC0) j++;                 // lead byte
-    if (j === i) {                                                 // plain ASCII
+    while (j < bytes.length && (bytes[j] & 0xC0) === 0x80) j++;   
+    if (j < bytes.length && bytes[j] >= 0xC0) j++;                 
+    if (j === i) {                                                 
       out[i] = bytes[i];
       i++;
       continue;
@@ -114,7 +113,7 @@ function animate(word, reversed) {
       output.textContent = popped.join("");
       opEl.textContent = "pop " + show(ch);
     } else {
-      output.textContent = reversed;   // final value comes from the C function
+      output.textContent = reversed;   
       opEl.textContent = "done";
       return;
     }
