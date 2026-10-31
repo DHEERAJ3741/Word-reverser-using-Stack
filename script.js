@@ -6,22 +6,37 @@ const stackArea = document.getElementById("stackArea");
 const heading = document.getElementById("visualHeading");
 const clearButton = document.getElementById("clearButton");
 
-let wasmReverse = null;
+let wasmInstance = null;
+let wasmMemory = null;
 
 async function loadCProgram() {
   try {
-    const response = await fetch("stack.wasm");
+    const response = await fetch("./stack.wasm");
+    if (!response.ok) {
+      throw new Error("stack.wasm could not be found. Check that it is uploaded to the repository root.");
+    }
+
     const bytes = await response.arrayBuffer();
-    const { instance } = await WebAssembly.instantiate(bytes);
-    wasmReverse = instance.exports.reverse_word;
+    const result = await WebAssembly.instantiate(bytes);
+
+    // Keep both the exported C function AND the WebAssembly memory.
+    wasmInstance = result.instance;
+    wasmMemory = wasmInstance.exports.memory;
+
+    if (!wasmMemory || !wasmInstance.exports.reverse_word) {
+      throw new Error("The WebAssembly file does not contain the expected exports.");
+    }
+
+    output.textContent = "Ready! Enter a word above.";
   } catch (error) {
-    output.textContent = "Could not load the C module. Run this site from a web server.";
-    console.error(error);
+    output.textContent = "The C module could not load. Check that stack.wasm is uploaded.";
+    console.error("WebAssembly loading error:", error);
   }
 }
 
 function drawStack(word) {
   stackArea.innerHTML = "";
+
   if (!word.length) {
     stackArea.innerHTML = '<p class="empty-state">Enter a word and press “Reverse word” to see PUSH and POP.</p>';
     heading.textContent = "Waiting for input";
@@ -29,13 +44,16 @@ function drawStack(word) {
   }
 
   heading.textContent = `PUSH ${word.length} characters, then POP`;
-  // Show the stack after all PUSH operations. The rightmost character is the top.
+
   [...word].forEach((character, index) => {
     const cell = document.createElement("div");
     cell.className = "cell" + (index === word.length - 1 ? " top" : "");
     cell.style.animationDelay = `${index * 35}ms`;
-    cell.innerHTML = `<small>${index === word.length - 1 ? "TOP" : index + 1}</small>`;
-    cell.append(document.createTextNode(character));
+
+    const label = document.createElement("small");
+    label.textContent = index === word.length - 1 ? "TOP" : String(index + 1);
+    cell.appendChild(label);
+    cell.appendChild(document.createTextNode(character));
     stackArea.appendChild(cell);
   });
 }
@@ -46,28 +64,43 @@ input.addEventListener("input", () => {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+
   const word = input.value;
   if (!word.length) {
     output.textContent = "Please enter a word first.";
     input.focus();
     return;
   }
-  if (!wasmReverse) {
-    output.textContent = "C program is still loading. Try again in a moment.";
+
+  if (!wasmInstance || !wasmMemory) {
+    output.textContent = "C module is still loading or failed to load. Refresh the page and try again.";
     return;
   }
 
-  const memory = new Uint8Array(wasmReverse.memory.buffer);
+  // Reserve two separate areas in WebAssembly memory:
+  // 1024 onwards = input string; 2048 onwards = output string.
+  const memory = new Uint8Array(wasmMemory.buffer);
   const inputPointer = 1024;
   const outputPointer = 2048;
+
   const encoded = new TextEncoder().encode(word);
+  if (encoded.length > 255) {
+    output.textContent = "Please enter a word with no more than 255 bytes.";
+    return;
+  }
+
   memory.fill(0, inputPointer, inputPointer + 256);
   memory.fill(0, outputPointer, outputPointer + 256);
-  memory.set(encoded.slice(0, 255), inputPointer);
-  wasmReverse(inputPointer, outputPointer);
+  memory.set(encoded, inputPointer);
+
+  // Call the C function compiled to WebAssembly.
+  wasmInstance.exports.reverse_word(inputPointer, outputPointer);
 
   let end = outputPointer;
-  while (memory[end] !== 0 && end < outputPointer + 256) end++;
+  while (memory[end] !== 0 && end < outputPointer + 256) {
+    end++;
+  }
+
   const reversed = new TextDecoder().decode(memory.slice(outputPointer, end));
   output.textContent = reversed;
   drawStack(word);
@@ -81,4 +114,5 @@ clearButton.addEventListener("click", () => {
   input.focus();
 });
 
+drawStack("");
 loadCProgram();
